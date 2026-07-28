@@ -1,0 +1,50 @@
+{
+  "name": "asscher-ai-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Asscher AI Operations Platform - Backend API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "start": "npm run db:push:safe && node dist/index.js",
+    "start:app": "node dist/index.js",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:push:safe": "prisma db push || echo 'db push failed - continuing (schema may already exist)'",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "pdfkit": "^0.15.1",
+    "pg": "^8.22.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.9.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/pdfkit": "^0.13.8",
+    "@types/pg": "^8.20.0",
+    "prisma": "^7.9.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

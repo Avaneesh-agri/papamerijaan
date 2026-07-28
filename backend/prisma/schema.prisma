@@ -1,0 +1,538 @@
+// Asscher AI Operations Platform — Data Model
+// All "dateKey" fields are IST (Asia/Kolkata) calendar dates stored as "YYYY-MM-DD".
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================ USERS & ORG
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  username           String    @unique
+  email              String    @unique
+  phone              String
+  passwordHash       String
+  isPrimaryAdmin     Boolean   @default(false)
+  managerId          String?
+  manager            User?     @relation("OrgTree", fields: [managerId], references: [id])
+  reports            User[]    @relation("OrgTree")
+  department         String?
+  roleNotes          String?
+  photoFileId        String?
+  dateOfJoining      String? // dateKey
+  stipendAmount      Int? // ₹ per cycle
+  payCycle           String    @default("MONTHLY")
+  payDay             Int       @default(5)
+  status             String    @default("ACTIVE") // ACTIVE | EXITED
+  exitDate           String? // dateKey
+  mustChangePassword Boolean   @default(false)
+  notifPrefs         Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sessions          Session[]
+  taskAssignments   TaskAssignee[]
+  submissions       Submission[]
+  dailyReports      DailyReport[]
+  leaves            Leave[]
+  streak            Streak?
+  streakDays        StreakDay[]
+  stipendRecords    StipendRecord[]
+  videoViews        VideoView[]
+  vaultAccess       VaultAccess[]
+  vaultViewLogs     VaultViewLog[]
+  notifications     Notification[]
+  userDocuments     UserDocument[]
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  tokenHash    String    @unique
+  deviceInfo   String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+  lastSeen     DateTime  @default(now())
+  revokedAt    DateTime?
+  revokeReason String? // NEW_DEVICE | SESSION_LIMIT | LOGOUT | FORCED | DEACTIVATED
+
+  @@index([userId])
+}
+
+model UserDocument {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  fileId    String
+  label     String
+  createdAt DateTime @default(now())
+}
+
+// ============================================================ FILES (stored in DB)
+
+model FileObject {
+  id           String   @id @default(cuid())
+  name         String
+  mime         String
+  size         Int
+  data         Bytes
+  uploadedById String?
+  scope        String   @default("GENERAL") // GENERAL | TASK | REPORT | PROFILE | VAULT | ARCHIVE
+  createdAt    DateTime @default(now())
+}
+
+// ============================================================ TASKS
+
+model Task {
+  id                  String    @id @default(cuid())
+  title               String
+  description         String?
+  protocol            String? // rich text SOP
+  priority            String    @default("NORMAL") // NORMAL | HIGH | ALERT
+  createdById         String
+  parentTaskId        String?
+  parentTask          Task?     @relation("TaskTree", fields: [parentTaskId], references: [id])
+  childTasks          Task[]    @relation("TaskTree")
+  startDate           String? // dateKey
+  dueAt               DateTime?
+  expectedEffort      String?
+  submissionMethod    String    @default("TEXT") // TEXT | FILE | LINK | CHECKLIST
+  checklistItems      Json? // [{id,label}]
+  isRecurringTemplate Boolean   @default(false)
+  recurrenceRule      Json? // {freq:'DAILY'|'WEEKLY', daysOfWeek:[1..7], dueTime:'18:00'}
+  recurrenceParentId  String?
+  archived            Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  assignees   TaskAssignee[]
+  resources   TaskResource[]
+  comments    TaskComment[]
+  submissions Submission[]
+  history     TaskHistory[]
+
+  @@index([parentTaskId])
+  @@index([createdById])
+  @@index([dueAt])
+}
+
+model TaskAssignee {
+  id             String    @id @default(cuid())
+  taskId         String
+  task           Task      @relation(fields: [taskId], references: [id])
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  assignedById   String
+  status         String    @default("ASSIGNED") // ASSIGNED | OPENED | IN_PROGRESS | SUBMITTED | UNDER_REVIEW | APPROVED | RETURNED
+  firstOpenedAt  DateTime?
+  lastActivityAt DateTime  @default(now())
+
+  @@unique([taskId, userId])
+  @@index([userId])
+}
+
+model TaskResource {
+  id      String  @id @default(cuid())
+  taskId  String
+  task    Task    @relation(fields: [taskId], references: [id])
+  type    String // FILE | LINK | VIDEO
+  fileId  String?
+  url     String?
+  videoId String?
+  label   String?
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id])
+  authorId  String
+  body      String
+  mentions  Json? // [userId]
+  createdAt DateTime @default(now())
+}
+
+model TaskHistory {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id])
+  actorId   String
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+}
+
+model Submission {
+  id             String    @id @default(cuid())
+  taskId         String
+  task           Task      @relation(fields: [taskId], references: [id])
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  attempt        Int       @default(1)
+  content        String?
+  linkUrl        String?
+  checklistState Json?
+  submittedAt    DateTime  @default(now())
+  reviewStatus   String    @default("PENDING") // PENDING | APPROVED | RETURNED
+  reviewedById   String?
+  reviewNote     String?
+  reviewedAt     DateTime?
+
+  files SubmissionFile[]
+
+  @@index([taskId])
+}
+
+model SubmissionFile {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  fileId       String
+  name         String
+}
+
+model ProtocolTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  createdById String
+  createdAt   DateTime @default(now())
+}
+
+// ============================================================ DAILY REPORTS
+
+model DailyReport {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  dateKey        String
+  summary        String?
+  blockers       String?
+  status         String    @default("DRAFT") // DRAFT | SUBMITTED | REVIEWED | FORWARDED
+  submittedAt    DateTime?
+  late           Boolean   @default(false)
+  reviewedById   String?
+  managerComment String?
+  forwardedAt    DateTime?
+  taskSnapshot   Json? // snapshot of that day's tasks at submit time
+  compiledTeam   Json? // [reportId] included when manager compiled & forwarded
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  attachments ReportAttachment[]
+
+  @@unique([userId, dateKey])
+  @@index([dateKey])
+}
+
+model ReportAttachment {
+  id       String      @id @default(cuid())
+  reportId String
+  report   DailyReport @relation(fields: [reportId], references: [id])
+  fileId   String
+  name     String
+}
+
+model DayReportArchive {
+  id            String   @id @default(cuid())
+  dateKey       String   @unique
+  fileId        String
+  generatedById String
+  generatedAt   DateTime @default(now())
+}
+
+// ============================================================ QUERIES & REQUIREMENTS
+
+model Query {
+  id             String    @id @default(cuid())
+  title          String
+  raisedById     String
+  taskId         String?
+  assignedToId   String // current holder
+  level          String    @default("NORMAL") // ALERT | NORMAL | LATER
+  status         String    @default("OPEN") // OPEN | PARKED | RESOLVED
+  escalations    Int       @default(0)
+  resolutionNote String?
+  resolvedById   String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  messages QueryMessage[]
+
+  @@index([assignedToId])
+  @@index([raisedById])
+}
+
+model QueryMessage {
+  id        String   @id @default(cuid())
+  queryId   String
+  query     Query    @relation(fields: [queryId], references: [id])
+  authorId  String
+  kind      String   @default("MESSAGE") // MESSAGE | ANSWER | PARK | ESCALATE | RESOLVE
+  body      String
+  meta      Json? // for ESCALATE: {fromId, toId}
+  createdAt DateTime @default(now())
+}
+
+model Requirement {
+  id              String   @id @default(cuid())
+  raisedById      String
+  title           String
+  detail          String?
+  status          String   @default("OPEN") // OPEN | CONVERTED | DECLINED | DONE
+  decisionNote    String?
+  convertedTaskId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================================ HR
+
+model Leave {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  type             String   @default("CASUAL") // CASUAL | SICK | OTHER
+  startDate        String // dateKey
+  endDate          String // dateKey
+  reason           String?
+  attachmentFileId String?
+  status           String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedById      String?
+  decisionNote     String?
+  decidedAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Holiday {
+  id      String @id @default(cuid())
+  dateKey String @unique
+  name    String
+}
+
+model StipendRecord {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  periodKey   String // "2026-07"
+  kind        String    @default("STIPEND") // STIPEND | BONUS
+  amount      Int
+  dueDate     String // dateKey
+  paidAt      DateTime?
+  paidNote    String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, periodKey, kind])
+  @@index([userId])
+}
+
+// ============================================================ STREAKS
+
+model Streak {
+  userId          String  @id
+  user            User    @relation(fields: [userId], references: [id])
+  current         Int     @default(0)
+  best            Int     @default(0)
+  lastCountedDate String?
+}
+
+model StreakDay {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  dateKey String
+  result  String // COUNTED | NEUTRAL | BROKE
+  reason  String?
+  detail  Json?
+
+  @@unique([userId, dateKey])
+  @@index([dateKey])
+}
+
+model StreakAdjustment {
+  id        String   @id @default(cuid())
+  userId    String
+  byId      String
+  setTo     Int
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model MilestoneEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  days      Int
+  dateKey   String
+  createdAt DateTime @default(now())
+}
+
+// ============================================================ TRAINING VIDEOS
+
+model Video {
+  id          String   @id @default(cuid())
+  title       String
+  category    String
+  description String?
+  driveFileId String // NEVER exposed to clients
+  addedById   String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  views  VideoView[]
+  tokens PlaybackToken[]
+}
+
+model VideoView {
+  id          String   @id @default(cuid())
+  videoId     String
+  video       Video    @relation(fields: [videoId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  openedAt    DateTime @default(now())
+  durationSec Int      @default(0)
+  lastPingAt  DateTime @default(now())
+
+  @@index([videoId])
+  @@index([userId])
+}
+
+model PlaybackToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id])
+  userId    String
+  viewId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ============================================================ VAULT
+
+model VaultItem {
+  id            String   @id @default(cuid())
+  name          String
+  plan          String?
+  monthlyCost   Int?
+  renewalDate   String? // dateKey
+  loginEmail    String?
+  loginUsername String?
+  passwordEnc   String? // AES-256-GCM, encrypted at rest
+  otpPhone      String?
+  otpHolder     String? // who physically holds the SIM
+  recoveryEmail String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  access   VaultAccess[]
+  viewLogs VaultViewLog[]
+}
+
+model VaultAccess {
+  id     String    @id @default(cuid())
+  itemId String
+  item   VaultItem @relation(fields: [itemId], references: [id])
+  userId String
+  user   User      @relation(fields: [userId], references: [id])
+
+  @@unique([itemId, userId])
+}
+
+model VaultViewLog {
+  id        String    @id @default(cuid())
+  itemId    String
+  item      VaultItem @relation(fields: [itemId], references: [id])
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  action    String    @default("REVEAL") // REVEAL | EXPORT
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model ExternalContact {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+// ============================================================ COMMS
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  body      String?
+  link      String?
+  level     String    @default("NORMAL") // NORMAL | ALERT
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  createdById String
+  createdAt   DateTime @default(now())
+
+  reads AnnouncementRead[]
+}
+
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  userId         String
+  readAt         DateTime     @default(now())
+
+  @@unique([announcementId, userId])
+}
+
+// ============================================================ AUDIT & SETTINGS
+
+model ActivityLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  type         String
+  targetUserId String?
+  detail       String
+  meta         Json?
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model AppSetting {
+  key   String @id
+  value Json
+}
+
+model AppState {
+  key   String @id
+  value String
+}
