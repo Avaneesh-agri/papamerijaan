@@ -1,0 +1,25 @@
+# Render Blueprint — deploys the backend as a web service.
+# In the Render dashboard: New + → Blueprint → point it at this repository.
+# (The frontend is deployed separately on Vercel/Netlify — see README.md)
+services:
+  - type: web
+    name: asscher-ai-backend
+    runtime: node
+    rootDir: backend
+    plan: free # upgrade to 'starter' to keep the nightly 00:05 IST streak job always-on (free instances sleep; the app self-heals via lazy catch-up either way)
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # paste your Neon/Supabase Postgres connection string
+      - key: FRONTEND_ORIGIN
+        sync: false # paste your Vercel frontend URL, e.g. https://asscher-ai.vercel.app
+      - key: VAULT_ENCRYPTION_KEY
+        generateValue: true
+      - key: SEED_ADMIN_USERNAME
+        value: admin
+      - key: SEED_ADMIN_EMAIL
+        value: admin@asscher.ai
+      - key: SEED_ADMIN_PASSWORD
+        sync: false # set the first Primary Admin password
